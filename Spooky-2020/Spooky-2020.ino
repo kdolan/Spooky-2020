@@ -86,6 +86,16 @@ void error(const __FlashStringHelper*err) {
   while (1);
 }
 
+const int WHITE_BUTTON_INPUT = 6;
+const int GREEN_BUTTON_INPUT = 12;
+const int YELLOW_BUTTON_INPUT = 13;
+
+const int WHITE_BUTTON_LED = 5;
+const int GREEN_BUTTON_LED = 9;
+const int YELLOW_BUTTON_LED = 10;
+
+const bool ENABLE_LOCAL_SERIAL = false;
+
 /**************************************************************************/
 /*!
     @brief  Sets up the HW an the BLE module (this function is called
@@ -94,26 +104,27 @@ void error(const __FlashStringHelper*err) {
 /**************************************************************************/
 void setup(void)
 {
-  while (!Serial);  // required for Flora & Micro
   delay(500);
 
-  Serial.begin(115200);
-  Serial.println(F("Adafruit Bluefruit Command Mode Example"));
-  Serial.println(F("---------------------------------------"));
+  if(ENABLE_LOCAL_SERIAL){
+    Serial.begin(115200);
+    Serial.println(F("Adafruit Bluefruit Command Mode Example"));
+    Serial.println(F("---------------------------------------"));
+  }
 
   /* Initialise the module */
-  Serial.print(F("Initialising the Bluefruit LE module: "));
+  serialPrint(F("Initialising the Bluefruit LE module: "));
 
   if ( !ble.begin(VERBOSE_MODE) )
   {
     error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
   }
-  Serial.println( F("OK!") );
+  serialPrintLn( F("OK!") );
 
   if ( FACTORYRESET_ENABLE )
   {
     /* Perform a factory reset to make sure everything is in a known state */
-    Serial.println(F("Performing a factory reset: "));
+    serialPrintLn(F("Performing a factory reset: "));
     if ( ! ble.factoryReset() ){
       error(F("Couldn't factory reset"));
     }
@@ -122,13 +133,13 @@ void setup(void)
   /* Disable command echo from Bluefruit */
   ble.echo(false);
 
-  Serial.println("Requesting Bluefruit info:");
+  serialPrintLn("Requesting Bluefruit info:");
   /* Print Bluefruit information */
   ble.info();
 
-  Serial.println(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
-  Serial.println(F("Then Enter characters to send to Bluefruit"));
-  Serial.println();
+  serialPrintLn(F("Please use Adafruit Bluefruit LE app to connect in UART mode"));
+  serialPrintLn(F("Then Enter characters to send to Bluefruit"));
+  serialPrintLn("");
 
   ble.verbose(false);  // debug info is a little annoying after this point!
 
@@ -141,14 +152,21 @@ void setup(void)
   if ( ble.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
   {
     // Change Mode LED Activity
-    Serial.println(F("******************************"));
-    Serial.println(F("Change LED activity to " MODE_LED_BEHAVIOUR));
+    serialPrintLn(F("******************************"));
+    serialPrintLn(F("Change LED activity to " MODE_LED_BEHAVIOUR));
     ble.sendCommandCheckOK("AT+HWModeLED=" MODE_LED_BEHAVIOUR);
-    Serial.println(F("******************************"));
+    serialPrintLn(F("******************************"));
   }
   
-  //Setup Button
-  pinMode(12,INPUT_PULLUP);
+  //Setup Buttons
+  pinMode(WHITE_BUTTON_INPUT,INPUT_PULLUP);
+  pinMode(GREEN_BUTTON_INPUT,INPUT_PULLUP);
+  pinMode(YELLOW_BUTTON_INPUT,INPUT_PULLUP);
+  
+  //Setup LEDs
+  pinMode(WHITE_BUTTON_LED,OUTPUT);
+  pinMode(GREEN_BUTTON_LED,OUTPUT);
+  pinMode(YELLOW_BUTTON_LED,OUTPUT);
 }
 
 /**************************************************************************/
@@ -160,26 +178,28 @@ void loop(void)
 {
   // Check for user input
   char inputs[BUFSIZE+1];
-  int buttonVal = digitalRead(12);
   
-  if(buttonVal == LOW){
-    ble.print("AT+BLEUARTTX=");
-    ble.println("BUTTON DOWN\r\n"); 
-   delay(1000);
-  }
+  checkButton(WHITE_BUTTON_INPUT, "WHITE");
+  checkButton(GREEN_BUTTON_INPUT, "GREEN");
+  checkButton(YELLOW_BUTTON_INPUT, "YELLOW");
+  
+  digitalWrite(WHITE_BUTTON_LED, HIGH);
+  digitalWrite(GREEN_BUTTON_LED, HIGH);
+  digitalWrite(YELLOW_BUTTON_LED, HIGH);
+
 
   if ( getUserInput(inputs, BUFSIZE) )
   {
     // Send characters to Bluefruit
-    Serial.print("[Send] ");
-    Serial.println(inputs);
+    serialPrint("[Send] ");
+    serialPrintLn(inputs);
 
     ble.print("AT+BLEUARTTX=");
     ble.println(inputs);
 
     // check response stastus
     if (! ble.waitForOK() ) {
-      Serial.println(F("Failed to send?"));
+      serialPrintLn(F("Failed to send?"));
     }
   }
 
@@ -191,8 +211,24 @@ void loop(void)
     return;
   }
   // Some data was found, its in the buffer
-  Serial.print(F("[Recv] ")); Serial.println(ble.buffer);
+  serialPrint(F("[Recv] ")); 
+  serialPrintLn(ble.buffer);
   ble.waitForOK();
+}
+
+void checkButton(int button, String color){
+  int btnVal = digitalRead(button);
+
+  if(btnVal == LOW){
+    delay(5);
+    btnVal = digitalRead(button);
+    if(btnVal == LOW){
+      serialPrintLn(color + "BUTTON DOWN \r ");
+      ble.print("AT+BLEUARTTX=");
+      ble.print(" -- " + color + " BUTTON DOWN -- \n \n \r\n \n\r "); 
+      delay(1000);
+    }
+  }
 }
 
 /**************************************************************************/
@@ -202,6 +238,9 @@ void loop(void)
 /**************************************************************************/
 bool getUserInput(char buffer[], uint8_t maxSize)
 {
+  if(!ENABLE_LOCAL_SERIAL){
+    return false;
+  }
   // timeout in 100 milliseconds
   TimeoutTimer timeout(100);
 
@@ -219,4 +258,16 @@ bool getUserInput(char buffer[], uint8_t maxSize)
   } while( (count < maxSize) && (Serial.available()) );
 
   return true;
+}
+
+void serialPrintLn(String s){
+  if(ENABLE_LOCAL_SERIAL){
+    Serial.println(s);
+  }
+}
+
+void serialPrint(String s){
+  if(ENABLE_LOCAL_SERIAL){
+    Serial.print(s);
+  }
 }
